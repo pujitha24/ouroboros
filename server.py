@@ -1269,6 +1269,23 @@ routes = [
 from contextlib import ExitStack, asynccontextmanager, suppress
 
 
+def _record_stop_cause(drive_root: pathlib.Path) -> None:
+    """Persist why this teardown began to ``state/server_stop_cause.json``: one small atomic replace,
+    no journal lock. The ``server_shutdown`` row is written only after ``kill_workers``, so a SIGKILL
+    inside the launcher's grace would otherwise leave the next start with no cause."""
+    try:
+        from ouroboros.utils import atomic_write_json
+
+        restart_requested = _restart_requested.is_set()
+        atomic_write_json(pathlib.Path(drive_root) / "state" / "server_stop_cause.json", {
+            "ts": utc_now_iso(),
+            "cause": "restart_requested" if restart_requested else server_stop_source(),
+            "restart_exit": restart_requested,
+        })
+    except Exception:
+        log.debug("Failed to record the early server stop cause", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app):
     global _event_loop
@@ -1481,6 +1498,7 @@ async def lifespan(app):
         from ouroboros.delegate_collection import stop_body_runtime
         stop_body_runtime(lifespan_drive_root, wait=False)
         begin_owned_stop(lifespan_drive_root)  # the grace starts here; pending stops are recorded before any wait
+        _record_stop_cause(lifespan_drive_root)  # lock-free, so a SIGKILL during kill_workers still leaves a cause
         log.info("Server shutting down...")
         # Let the loop leave its current tick BEFORE workers are killed and the
         # bridge/Manager go down: a tick still running would otherwise respawn

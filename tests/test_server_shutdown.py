@@ -951,3 +951,37 @@ def test_supervisor_revival_clears_a_stale_stop_flag(monkeypatch):
         assert started == [server._supervisor_generation]  # the latch-checking thread body (#1142)
     finally:
         server._supervisor_stop.clear()
+
+
+def test_stop_cause_is_written_before_the_join_without_the_journal_lock(tmp_path, monkeypatch):
+    """A SIGKILL during ``kill_workers`` must still leave the cause: the early file is written at
+    teardown entry, before the join and ``kill_workers``, and never touches ``append_jsonl``."""
+    import inspect
+    import json
+
+    import ouroboros.utils as utils
+    import server
+
+    teardown = inspect.getsource(server.lifespan).split("\n    finally:\n", 1)[1]
+    assert (teardown.index("begin_owned_stop(lifespan_drive_root)")
+            < teardown.index("_record_stop_cause(lifespan_drive_root)")
+            < teardown.index("supervisor_thread.join(timeout=2)")
+            < teardown.index("kill_workers("))
+
+    def _no_journal(*_args, **_kwargs):
+        raise AssertionError("the early cause write must not take the journal lock")
+
+    monkeypatch.setattr(utils, "append_jsonl", _no_journal)
+    monkeypatch.setattr(server, "server_stop_source", lambda: "launcher_quit")
+    server._restart_requested.clear()
+    server._record_stop_cause(tmp_path)
+    cause = json.loads((tmp_path / "state" / "server_stop_cause.json").read_text(encoding="utf-8"))
+    assert cause["cause"] == "launcher_quit" and cause["restart_exit"] is False and cause["ts"]
+
+    server._restart_requested.set()
+    try:
+        server._record_stop_cause(tmp_path)
+    finally:
+        server._restart_requested.clear()
+    cause = json.loads((tmp_path / "state" / "server_stop_cause.json").read_text(encoding="utf-8"))
+    assert cause["cause"] == "restart_requested" and cause["restart_exit"] is True

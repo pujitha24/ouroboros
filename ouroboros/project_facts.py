@@ -229,9 +229,16 @@ def project_store_access_block(rel_path: Any) -> "str | None":
     normalized = _os.path.normpath(raw).replace("\\", "/").lstrip("/")
     first = normalized.split("/", 1)[0].casefold() if normalized else ""
     if first == "projects":
+        parts = normalized.split("/")
+        if len(parts) > 3 and parts[2].casefold() == "knowledge":
+            return ("⚠️ ACCESS_DENIED: the per-project facts store (projects/<id>/) is not "
+                    "reachable via generic data tools. Knowledge topics on that shelf are "
+                    "addressed by topic through knowledge_read / knowledge_write "
+                    "(automatically scoped to the current project).")
         return ("⚠️ ACCESS_DENIED: the per-project facts store (projects/<id>/) is not "
-                "reachable via generic data tools. Use knowledge_read / knowledge_write "
-                "(automatically scoped to the current project).")
+                "reachable via generic data tools, and this path is not a knowledge "
+                "topic, so knowledge_read / knowledge_write cannot address it. No direct "
+                "reader exists for it here; ask the owner/parent task to supply the content.")
     return None
 
 

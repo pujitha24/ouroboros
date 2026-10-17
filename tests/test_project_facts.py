@@ -457,3 +457,14 @@ def test_project_id_for_origin_strict_raises_only_for_the_creating_callers(tmp_p
     assert project_id_for_origin(tmp_path, _owner_ref()) == ""
     with pytest.raises(ValueError):
         project_id_for_origin(tmp_path, _owner_ref(), strict=True)
+
+
+def test_project_store_denial_names_a_reader_only_for_knowledge_topics():
+    from ouroboros.project_facts import project_store_access_block
+
+    topic = project_store_access_block("projects/proj_x/knowledge/note.md")
+    assert "knowledge_read" in topic
+    for path in ("projects/proj_x/workpad.md", "projects/proj_x", "projects/proj_x/knowledge"):
+        msg = project_store_access_block(path)
+        assert msg.startswith("⚠️ ACCESS_DENIED")
+        assert "cannot address it" in msg

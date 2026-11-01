@@ -241,6 +241,14 @@ class TestCentralWorktreeInvalidation:
         with pytest.raises(subprocess.TimeoutExpired):
             run_cmd([sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.2)
 
+    def test_run_cmd_survives_non_utf8_output(self):
+        import sys
+
+        from ouroboros.utils import run_cmd
+
+        code = "import sys; sys.stdout.buffer.write(b'ab \\xe2\\x80 cd \\xe2\\x80\\x94')"
+        assert run_cmd([sys.executable, "-c", code]) == "ab \\xe2\\x80 cd \u2014"
+
     def test_mutating_tools_are_flagged(self):
         from ouroboros.tools import git_pr, services, shell
 

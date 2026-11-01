@@ -1195,7 +1195,10 @@ def run_cmd(
 
     env = host_git_env()
     res = subprocess.run(
-        cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True, env=env,
+        cmd, cwd=str(cwd) if cwd else None, capture_output=True, env=env,
+        # Git emits raw bytes (conflict hunks, legacy-encoded files); a strict decode
+        # would raise UnicodeDecodeError and lose the whole output.
+        text=True, encoding="utf-8", errors="backslashreplace",
         timeout=timeout,
     )
     if res.returncode != 0:
